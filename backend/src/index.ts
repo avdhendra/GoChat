@@ -8,8 +8,11 @@ import typeDefs from './graphql/typeDefs';
 import resolvers from './graphql/resolvers';
 import { getSession } from 'next-auth/react'
 import * as dotenv from 'dotenv';
-import { GraphQLContext, Session } from './util/types';
+import { GraphQLContext, Session, SubscriptionContext } from './util/types';
 import { PrismaClient } from '@prisma/client';
+import { WebSocketServer } from 'ws';
+import { useServer } from 'graphql-ws/lib/use/ws';
+import { PubSub } from 'graphql-subscriptions';
 async function main() {
   dotenv.config()
   // Required logic for integrating with Express
@@ -19,18 +22,40 @@ async function main() {
   // enabling our servers to shut down gracefully.
   const httpServer = http.createServer(app);
 
+// Creating the WebSocket server
+const wsServer = new WebSocketServer({
+  // This is the `httpServer` we created in a previous step.
+  server: httpServer,
+  // Pass a different path here if app.use
+  // serves expressMiddleware at a different path
+  path: '/subscriptions',
+});
+
   const schema = makeExecutableSchema({
     typeDefs,
     resolvers
   })
+  const prisma = new PrismaClient()
+  const pubsub = new PubSub();
 
+
+
+  const serverCleanup = useServer({
+    schema, context:async (ctx: SubscriptionContext): Promise<GraphQLContext> => {
+      if (ctx.connectionParams && ctx.connectionParams.session) {
+        const { session } = ctx.connectionParams;
+       return {session,prisma,pubsub}
+
+      }
+      return{session:null,prisma,pubsub}
+} }, wsServer);
   const corsOptions = {
     origin: process.env.CLIENT_ORIGIN,
     credentials: true, //allow to server to access the authorization header
   }
 
 
-  const prisma = new PrismaClient()
+
   
 
   // Same ApolloServer initialization as before, plus the drain plugin
@@ -42,9 +67,20 @@ async function main() {
     context: async ({ req, res }): Promise<GraphQLContext> => {
       const session = await getSession({ req }) as Session;
       //console.log("CONTEXT SESSION", session)
-      return { session,prisma}
+      return { session,prisma,pubsub}
     },
-    plugins: [ApolloServerPluginDrainHttpServer({ httpServer }), ApolloServerPluginLandingPageLocalDefault({ embed: true })],
+    plugins: [ApolloServerPluginDrainHttpServer({ httpServer }),
+    {
+      async serverWillStart() {
+        return {
+          async drainServer() {
+            await serverCleanup.dispose();
+          },
+        };
+      },
+    },
+    
+      ApolloServerPluginLandingPageLocalDefault({ embed: true })],
   });
 
   // More required logic for integrating with Express

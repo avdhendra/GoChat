@@ -1,6 +1,7 @@
 import { ApolloError } from "apollo-server-core";
 import { ConversationPopulated, GraphQLContext } from "../../util/types";
 import { Prisma } from "@prisma/client";
+import { withFilter } from "graphql-subscriptions/dist/with-filter";
 
 const resolvers = {
   Query: {
@@ -45,7 +46,7 @@ const resolvers = {
       args: { participantIds: Array<string> },
       context: GraphQLContext
     ): Promise<{ conversationId: string }> => {
-      const { session, prisma } = context;
+      const { session, prisma,pubsub } = context;
       const { participantIds } = args;
       if (!session?.user) {
         throw new ApolloError("No Authorization");
@@ -68,6 +69,9 @@ const resolvers = {
           include: conversationPopulated,
         });
         //emit a Conversation Created event using pubsub
+        pubsub.publish('CONVERSATION_CREATED', {
+          conversationCreated:conversation
+        })
         return {
           conversationId: conversation.id,
         };
@@ -76,7 +80,39 @@ const resolvers = {
       }
     },
   },
+  Subscription: {
+    //every time pubsub published
+    conversationCreated: {
+      // subscribe: (_: any, __: any, context: GraphQLContext) => {
+      //   const { pubsub } = context
+      //  return  pubsub.asyncIterator(['CONVERSATION_CREATED']) 
+      //   //when createConversation mutation fired Conversation_Created publish with payload 
+      //   //this subscription is listening to conversation_created event this is fired every time 
+      // }
+      subscribe: withFilter(
+        (_: any, __: any, context: GraphQLContext) => {
+         const { pubsub } = context
+        return  pubsub.asyncIterator(['CONVERSATION_CREATED']) 
+         //when createConversation mutation fired Conversation_Created publish with payload 
+         //this subscription is listening to conversation_created event this is fired every time 
+        }, (payload: ConversationCreatedSubscriptionPayload, _, context: GraphQLContext) => {
+          const { session } = context;
+          const { conversationCreated: { participants } } = payload
+          const userIsParticipant = !!participants.find(p => p.userId === session?.user?.id)
+          return userIsParticipant;
+       }
+      )
+    }
+  }
 };
+
+
+export interface ConversationCreatedSubscriptionPayload{
+  conversationCreated:ConversationPopulated
+}
+
+
+
 
 export const participantPopulated =
   Prisma.validator<Prisma.ConversationParticipantInclude>()({

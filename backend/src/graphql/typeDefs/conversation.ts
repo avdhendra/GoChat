@@ -26,5 +26,12 @@ type Participant{
     hasSeenLatestMessage:Boolean 
 }
 
+type Subscription{
+    conversationCreated:Conversation
+}
+
+
+
+
 `
 export default typeDefs

@@ -13,7 +13,7 @@ const UserSearchList: React.FC<UserSearchListProps> = ({ users,addParticipants }
                 {users.map((user) => (
                     <Stack key={user.id} direction='row' align='center' spacing={4} py={2} px={4} borderRadius={4} _hover={{ bg: 'whiteAlpha.200' }}>
                         <Avatar />
-                        <Flex justify='spacing-between' width="100%" align='center'>
+                        <Flex justify='space-between' width="100%" >
                             <Text color="whiteAlpha.700">
                                 {user.username}
                             </Text>

@@ -23,7 +23,7 @@ export interface SearchedUser{
 
 //Conversations
 
-export interface ConversationData{
+export interface ConversationsData{
     conversations:Array<ConversationPopulated>
 }
 
