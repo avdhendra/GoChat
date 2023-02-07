@@ -21,5 +21,5 @@ export default {
         }
         `
     },
-    Subscriptions:{}
+   // Subscriptions:{}
 }
