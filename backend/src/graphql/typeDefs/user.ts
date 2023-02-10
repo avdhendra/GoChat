@@ -1,26 +1,16 @@
-import { gql } from "apollo-server-core";
+import gql from "graphql-tag";
 //scehma
 const typeDefs = gql`
+    scalar Date
   type User {
     id: String
-    name: String
-    emai: String
     username: String
-    emailVerified: Boolean
-    image: String
   }
-  type SearchedUser {
-    id: String
-    username: String
-    banned: Boolean
-  }
-  #reading the from the database for user
   type Query {
-    searchUsers(username: String): [SearchedUser]
+    searchUsers(username: String!): [User]
   }
-  #creating and deleting and updation in mutation
   type Mutation {
-    createUsername(username: String): CreateUsernameResponse
+    createUsername(username: String!): CreateUsernameResponse
   }
   type CreateUsernameResponse {
     success: Boolean

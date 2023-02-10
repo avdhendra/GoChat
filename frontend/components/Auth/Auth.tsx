@@ -75,7 +75,7 @@ const Auth: React.FC<AuthProps> = ({ session, reloadSession }) => {
         ) : (
           <>
             <Image height={100} src="/images/imessage-logo.png" />
-            <Text fontSize="4xl">MessengerQL</Text>
+            <Text fontSize="4xl">GoChat</Text>
             <Text width="70%" align="center">
               Sign in with Google to send unlimited free messages to your
               friends

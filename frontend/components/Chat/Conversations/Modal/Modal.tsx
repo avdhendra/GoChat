@@ -1,72 +1,209 @@
 import { useLazyQuery, useMutation } from "@apollo/client";
 import {
-  ModalOverlay,
+  Box,
+  Button,
+  Input,
+  Modal,
+  ModalBody,
+  ModalCloseButton,
   ModalContent,
   ModalHeader,
-  ModalCloseButton,
-  ModalBody,
-  Text,
-  Modal,
+  ModalOverlay,
   Stack,
-  Input,
-  Button,
 } from "@chakra-ui/react";
-import { useState } from "react";
-import { toast } from "react-hot-toast";
-import UserOperations from "../../../../graphql/operations/users";
-import ConversationOperations from "../../../../graphql/operations/conversation";
-import {
-  CreateConversationData,
-  CreateConversationInput,
-  SearchedUser,
-  SearchUserInput,
-  SearchUsersData,
-} from "../../../../utils/types";
-import Participants from "./Participants";
-import UserSearchList from "./UserSearchList";
 import { Session } from "next-auth";
 import { useRouter } from "next/router";
-import { ConversationPopulated } from "../../../../../backend/src/util/types";
+import React, { useEffect, useState } from "react";
+import toast from "react-hot-toast";
+import { ConversationPopulated,ParticipantPopulated } from "../../../../../backend/src/util/types";
+import UserOperations from "../../../../graphql/operations/users";
+import ConversationOperations from '../../../../graphql/operations/conversation'
+import { CreateConversationData,SearchedUser,SearchUsersData,SearchUsersInputs } from "../../../../utils/types";
+import ConversationItem from "../ConversationItem";
+import Participants from "./Participants";
+import UserSearchList from "./UserSearchList";
 
-interface ModalProps {
+
+interface ConversationModal {
   isOpen: boolean;
   onClose: () => void;
   session: Session;
   conversations: Array<ConversationPopulated>;
-
+  editingConversation: ConversationPopulated | null;
+  onViewConversation: (
+    conversationId: string,
+    hasSeenLatestMessage: boolean
+  ) => void;
+  getUserParticipantObject: (
+    conversation: ConversationPopulated
+  ) => ParticipantPopulated;
 }
 
-const ConversationModal: React.FC<ModalProps> = ({
+const ConversationModal: React.FC<ConversationModal> = ({
   isOpen,
   onClose,
   session,
-  conversations
+  conversations,
+  editingConversation,
+  onViewConversation,
+  getUserParticipantObject,
 }) => {
+  const [username, setUsername] = useState("");
+  const [participants, setParticipants] = useState<Array<SearchedUser>>([]);
+
+  const [existingConversation, setExistingConversation] =
+    useState<ConversationPopulated | null>(null);
+
+  const router = useRouter();
   const {
     user: { id: userId },
   } = session;
 
-  const router = useRouter();
-
-  const [username, setUsername] = useState("");
-  //users selected
-  const [participants, setParticipants] = useState<Array<SearchedUser>>([]);
-  const [exisitingConversations, setExistingConversation] =
-    useState<ConversationPopulated | null>(null);
-  //async is handle by lazyquery
-  const [searchUsers, { data, error, loading }] = useLazyQuery<
-    SearchUsersData,
-    SearchUserInput
-  >(UserOperations.Queries.searchUsers); //choose exactly when to execute the query
+  const [
+    searchUsers,
+    {
+      data: searchUsersData,
+      loading: searchUsersLoading,
+      error: searchUsersError,
+    },
+  ] = useLazyQuery<SearchUsersData, SearchUsersInputs>(
+    UserOperations.Queries.searchUsers
+  );
 
   const [createConversation, { loading: createConversationLoading }] =
-    useMutation<CreateConversationData, CreateConversationInput>(
+    useMutation<CreateConversationData, { participantIds: Array<string> }>(
       ConversationOperations.Mutations.createConversation
     );
 
-  const onSearch = (event: React.FormEvent) => {
+  const [updateParticipants, { loading: updateParticipantsLoading }] =
+    useMutation<
+      { updateParticipants: boolean },
+      { conversationId: string; participantIds: Array<string> }
+    >(ConversationOperations.Mutations.updateParticipants);
+
+  const onSubmit = () => {
+    if (!participants.length) return;
+
+    const participantIds = participants.map((p) => p.id);
+
+    const existing = findExistingConversation(participantIds);
+
+    if (existing) {
+      toast("Conversation already exists");
+      setExistingConversation(existing);
+      return;
+    }
+
+    /**
+     * Determine which function to call
+     */
+    editingConversation
+      ? onUpdateConversation(editingConversation)
+      : onCreateConversation();
+  };
+
+  /**
+   * Verifies that a conversation with selected
+   * participants does not already exist
+   */
+  const findExistingConversation = (participantIds: Array<string>) => {
+    let existingConversation: ConversationPopulated | null = null;
+
+    for (const conversation of conversations) {
+      const addedParticipants = conversation.participants.filter(
+        (p:any) => p.user.id !== userId
+      );
+
+      if (addedParticipants.length !== participantIds.length) {
+        continue;
+      }
+
+      let allMatchingParticipants: boolean = false;
+      for (const participant of addedParticipants) {
+        const foundParticipant = participantIds.find(
+          (p) => p === participant.user.id
+        );
+
+        if (!foundParticipant) {
+          allMatchingParticipants = false;
+          break;
+        }
+
+        /**
+         * If we hit here,
+         * all match
+         */
+        allMatchingParticipants = true;
+      }
+
+      if (allMatchingParticipants) {
+        existingConversation = conversation;
+      }
+    }
+
+    return existingConversation;
+  };
+
+  const onCreateConversation = async () => {
+    const participantIds = [userId, ...participants.map((p) => p.id)];
+
+    try {
+      const { data, errors } = await createConversation({
+        variables: {
+          participantIds,
+        },
+      });
+      if (!data?.createConversation || errors) {
+        throw new Error("Failed to create conversation");
+      }
+      const {
+        createConversation: { conversationId },
+      } = data;
+      router.push({ query: { conversationId } });
+
+      /**
+       * Clear state and close modal
+       * on successful creation
+       */
+      setParticipants([]);
+      setUsername("");
+      onClose();
+    } catch (error: any) {
+      console.log("createConversations error", error);
+      toast.error(error?.message);
+    }
+  };
+
+  const onUpdateConversation = async (conversation: ConversationPopulated) => {
+    const participantIds = participants.map((p) => p.id);
+
+    try {
+      const { data, errors } = await updateParticipants({
+        variables: {
+          conversationId: conversation.id,
+          participantIds,
+        },
+      });
+
+      if (!data?.updateParticipants || errors) {
+        throw new Error("Failed to update participants");
+      }
+
+      /**
+       * Clear state and close modal
+       * on successful update
+       */
+      setParticipants([]);
+      setUsername("");
+      onClose();
+    } catch (error) {
+      console.log("onUpdateConversation error", error);
+      toast.error("Failed to update participants");
+    }
+  };
+
+  const onSearch = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    //search user query
     searchUsers({ variables: { username } });
   };
 
@@ -76,133 +213,116 @@ const ConversationModal: React.FC<ModalProps> = ({
   };
 
   const removeParticipant = (userId: string) => {
-    setParticipants((prev) => prev.filter((p) => p.id !== userId));
+    setParticipants((prev) => prev.filter((u) => u.id !== userId));
   };
 
-  const onCreateConversation = async () => {
-    const participantIds = [
-      userId,
-      ...participants.map((participant) => participant.id),
-    ];
-    try {
-      //create Conversation mutation
-      const { data, errors } = await createConversation({
-        variables: { participantIds },
-      });
-      if (!data?.createConversation || errors) {
-        throw new Error("Failed to create conversation");
-      }
-      const {
-        createConversation: { conversationId },
-      } = data;
-      router.push({ query: { conversationId } }); //we route to thee new conversation link
-      /**
-       * Clear state and close modal
-       * on Successfull creation
-       */
-    } catch (error: any) {
-      toast.error(error?.message);
-    }
-  };
-  const findExistingConversation = (participantIds: Array<string>) => {
-    let existingConversation: ConversationPopulated | null = null;
-    for (const conversation of conversations) {
-      const addedParticipants = conversation.participants.filter((p: any) => p.user.id !== userId)
-      if (addedParticipants.length !== participantIds.length) { 
-        continue;
-      }
-      let allMatchingParticipants: boolean = false;
-      for (const participant of addedParticipants) {
-        const foundParticipant = participantIds.find((p) => p === participant.user.id);
-if (!foundParticipant) {
-  allMatchingParticipants = false
-  break;
-        }
-        allMatchingParticipants = true;
-        
-      
-      }
-      if (allMatchingParticipants) {
-        existingConversation=conversation
-      }
+  const onConversationClick = () => {
+    if (!existingConversation) return;
 
-      
-    }
-    return existingConversation
-}
-  const onSubmit = () => {
-    if (!participants.length) {
+    const { hasSeenLatestMessage } =
+      getUserParticipantObject(existingConversation);
+
+    onViewConversation(existingConversation.id, hasSeenLatestMessage);
+    onClose();
+  };
+
+  /**
+   * If a conversation is being edited,
+   * update participant state to be that
+   * conversations' participants
+   */
+  useEffect(() => {
+    if (editingConversation) {
+      setParticipants(
+        editingConversation.participants.map((p:any) => p.user as SearchedUser)
+      );
       return;
     }
-    const participantIds = participants.map((p) => p.id);
-    const existing = findExistingConversation(participantIds);
-    if (existing) {
-      toast("Conversation already exists");
-      setExistingConversation(existing);
-      return;
-    }
-    editingConversation?onUpdateConversation(editingConversation):onCreateConversation()
-  };
+  }, [editingConversation]);
 
-  const onUpdateConversation = async (conversation: ConversationPopulated) => {
-    const participantIds = participants.map((p) => p.id);
-    try {
-      const { data, errors } = await updateParticipants({
-        variables: {
-          conversationId: conversation.id,
-          participantIds,
-        }
-      })
-      if (!data?.updateParticipants || errors) {
-        throw new Error("Failed to update Participant")
-      }
-    } catch (error) {
-      console.log("onUpdateConversation error", error)
-      toast.error("Failed to update participants")
+  /**
+   * Reset existing conversation state
+   * when participants added/removed
+   */
+  useEffect(() => {
+    setExistingConversation(null);
+  }, [participants]);
+
+  /**
+   * Clear participant state if closed
+   */
+  useEffect(() => {
+    if (!isOpen) {
+      setParticipants([]);
     }
-}
+  }, [isOpen]);
+
+  if (searchUsersError) {
+    toast.error("Error searching for users");
+    return null;
+  }
 
   return (
     <>
-      <Modal isOpen={isOpen} onClose={onClose}>
+      <Modal isOpen={isOpen} onClose={onClose} size={{ base: "sm", md: "md" }}>
         <ModalOverlay />
         <ModalContent bg="#2d2d2d" pb={4}>
-          <ModalHeader>Create a Conversation</ModalHeader>
+          <ModalHeader>Find or Create a Conversation</ModalHeader>
           <ModalCloseButton />
           <ModalBody>
             <form onSubmit={onSearch}>
-              <Stack>
+              <Stack spacing={4}>
                 <Input
                   placeholder="Enter a username"
+                  onChange={(event) => setUsername(event.target.value)}
                   value={username}
-                  onChange={(e) => setUsername(e.target.value)}
                 />
-                <Button type="submit" disabled={!username} isLoading={loading}>
+                <Button
+                  width="100%"
+                  type="submit"
+                  isLoading={searchUsersLoading}
+                  disabled={!username}
+                >
                   Search
                 </Button>
               </Stack>
             </form>
-            {data?.searchUsers && (
+            {searchUsersData?.searchUsers && (
               <UserSearchList
-                users={data?.searchUsers}
-                addParticipants={addParticipant}
+                users={searchUsersData.searchUsers}
+                participants={participants}
+                addParticipant={addParticipant}
               />
             )}
             {participants.length !== 0 && (
               <>
                 <Participants
-                  participants={participants}
+                  participants={participants.filter((p) => p.id !== userId)}
                   removeParticipant={removeParticipant}
                 />
+                <Box mt={4}>
+                  {existingConversation && (
+                    <ConversationItem
+                      userId={userId}
+                      conversation={existingConversation}
+                      onClick={() => onConversationClick()}
+                    />
+                  )}
+                </Box>
                 <Button
                   bg="brand.100"
+                  _hover={{ bg: "brand.100" }}
                   width="100%"
                   mt={6}
-                  _hover={{ bg: "brand.100" }}
-                  onClick={onCreateConversation}
-                  isLoading={createConversationLoading}
+                  disabled={!!existingConversation}
+                  isLoading={
+                    createConversationLoading || updateParticipantsLoading
+                  }
+                  onClick={onSubmit}
                 >
-                  Create Conversation
+                  {editingConversation
+                    ? "Update Conversation"
+                    : "Create Conversation"}
                 </Button>
               </>
             )}

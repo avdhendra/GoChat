@@ -1,37 +1,54 @@
-import { gql } from "apollo-server-core";
+import gql from "graphql-tag";
 
 const typeDefs = gql`
-
-scalar Date
-
-type Mutation{
-    createConversation(participantIds:[String]):CreateConversationResponse
-}
-type CreateConversationResponse{
-    conversationId:String
-}
-type Conversation{
-    id:String
-   # latestMessage:String
-    participants:[Participant]
-    createdAt:Date
-    updateAt:Date
-}
-type Query{
-    conversations:[Conversation]
-}
-type Participant{
-    id:String
-    user:User
-    hasSeenLatestMessage:Boolean 
-}
-
-type Subscription{
-    conversationCreated:Conversation
-}
-
-
-
-
-`
+  type Conversation {
+    id: String
+    latestMessage: Message
+    participants: [Participant]
+    updatedAt: Date
+  }
+  type Participant {
+    id: String
+    user: User
+    hasSeenLatestMessage: Boolean
+  }
+  type CreateConversationResponse {
+    conversationId: String
+  }
+  type ConversationDeletedResponse {
+    id: String
+  }
+  type ConversationUpdatedSubscriptionPayload {
+    conversation: Conversation
+    addedUserIds: [String]
+    removedUserIds: [String]
+  }
+  type Query {
+    conversations: [Conversation]
+  }
+  type Mutation {
+    createConversation(participantIds: [String]): CreateConversationResponse
+  }
+  type Mutation {
+    markConversationAsRead(userId: String!, conversationId: String!): Boolean
+  }
+  type Mutation {
+    deleteConversation(conversationId: String!): Boolean
+  }
+  type Mutation {
+    updateParticipants(
+      conversationId: String!
+      participantIds: [String]!
+    ): Boolean
+  }
+  type Subscription {
+    conversationCreated: Conversation
+  }
+  type Subscription {
+    conversationUpdated: ConversationUpdatedSubscriptionPayload
+  }
+  type Subscription {
+    conversationDeleted: ConversationDeletedResponse
+  }
+`;
 export default typeDefs

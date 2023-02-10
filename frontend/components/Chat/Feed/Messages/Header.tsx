@@ -6,6 +6,7 @@ import ConversationOperations from '../../../../graphql/operations/conversation'
 
 import { ConversationsData } from "../../../../utils/types";
 import { formatUsernames } from "../../../../utils/functions";
+import SkeletonLoader from "../../../common/SkeletonLoader";
 //import SkeletonLoader from "../../../common/SkeletonLoader";
 
 interface MessagesHeaderProps {
@@ -35,7 +36,7 @@ const MessagesHeader: React.FC<MessagesHeaderProps> = ({
       direction="row"
       align="center"
       spacing={6}
-      py={5}
+      py={4}
       px={{ base: 4, md: 0 }}
       borderBottom="1px solid"
       borderColor="whiteAlpha.200"
@@ -50,6 +51,7 @@ const MessagesHeader: React.FC<MessagesHeaderProps> = ({
       >
         Back
       </Button>
+      {loading && <SkeletonLoader count={1} height="30px" width="320px" />}
       {/* {loading && <SkeletonLoader count={1} height="30px" width="320px" />} */}
       {!conversation && !loading && <Text>Conversation Not Found</Text>}
       {conversation && (

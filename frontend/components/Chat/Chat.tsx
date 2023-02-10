@@ -3,7 +3,7 @@ import { Session } from "next-auth";
 import { signOut } from "next-auth/react";
 import ConversationsWrapper from "./Conversations/ConversationsWrapper";
 import FeedWrapper from "./Feed/FeedWrapper";
-
+import ModalProvider from "../../context/ModalContext";
 interface IChatProps {
 session:Session
 }
@@ -11,9 +11,10 @@ session:Session
 const Chat: React.FC<IChatProps> = ({session}) => {
     return (
       <Flex height="100vh">
+        <ModalProvider>
         <ConversationsWrapper session={session} />
         <FeedWrapper session={session} />
-        {/* <Button onClick={() => signOut()}>Log Out</Button> */}
+        </ModalProvider>
 
       </Flex>
   );

@@ -3,10 +3,11 @@ import { SearchedUser } from "../../../../utils/types";
 
 interface UserSearchListProps {
     users: Array<SearchedUser>
-    addParticipants: (user: SearchedUser) => void
+     participants: Array<SearchedUser>;
+    addParticipant: (user: SearchedUser) => void
     
 }
-const UserSearchList: React.FC<UserSearchListProps> = ({ users,addParticipants }) => {
+const UserSearchList: React.FC<UserSearchListProps> = ({ users,participants,addParticipant }) => {
     return (
         <>
             {users?.length > 0 ? (<Stack mt={6}>
@@ -17,7 +18,11 @@ const UserSearchList: React.FC<UserSearchListProps> = ({ users,addParticipants }
                             <Text color="whiteAlpha.700">
                                 {user.username}
                             </Text>
-                            <Button bg="brand.100" _hover={{bg:"brand.100"}} onClick={()=>{addParticipants(user)}}>Select</Button>
+                            <Button bg="brand.100" _hover={{bg:"brand.100"}}  disabled={
+                    !!participants.find(
+                      (participant) => participant.id === user.id
+                    )
+                  } onClick={()=>{addParticipant(user)}}>Select</Button>
                         </Flex>
                     </Stack>
                 ))}
